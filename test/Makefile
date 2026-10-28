@@ -6,6 +6,7 @@ SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = project.v
+PDK_ROOT ?= $(PWD)/../.pdk
 
 ifneq ($(GATES),yes)
 
@@ -42,3 +43,6 @@ COCOTB_TEST_MODULES = test
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+# Enable FST waveform dumping in Icarus Verilog (tb.v writes tb.fst)
+FST = -fst

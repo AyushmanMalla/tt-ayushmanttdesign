@@ -1,20 +1,50 @@
-![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/wokwi_test/badge.svg) ![](../../workflows/fpga/badge.svg)
+![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Wokwi Project Template
+# AyushmanTTDesign — Tiny Tapeout Verilog Project (GF180MCU)
 
 - [Read the documentation for project](docs/info.md)
 
-## What is Tiny Tapeout?
+## Open-Source ASIC Workflow (macOS & Make)
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+This project uses a full open-source RTL-to-GDSII flow targeting the GlobalFoundries 180nm (`gf180mcuD`) PDK:
+- **RTL Design**: Verilog-2005 (`src/project.v`, top module `tt_um_ayushmanmalla_top`)
+- **Verification**: [cocotb](https://www.cocotb.org/) + Icarus Verilog (`test/tb.v`, `test/test.py`) + [Surfer](https://surfer-project.org/)
+- **Lint & Synthesis**: Verilator & Yosys
+- **ASIC Implementation (RTL-to-GDSII)**: [LibreLane](https://librelane.readthedocs.io/) (OpenROAD, Yosys, Magic, Netgen, KLayout)
 
-To learn more and get started, visit https://tinytapeout.com.
+### 1. Environment Setup (macOS)
 
-## Wokwi Projects
+Run the centralized setup script via Make to install Homebrew dependencies, clone `tt-support-tools` into `./tt`, create the repo-local Python environment in `./.venv`, and enable the `gf180mcuD` PDK in `./.pdk`:
 
-Edit the [info.yaml](info.yaml) and change the `wokwi_id` to the ID of your Wokwi project. You can find the ID in the URL of your project, it's the big number after `wokwi.com/projects/`.
+```sh
+make setup
+```
 
-The GitHub action will automatically fetch the digital netlist from Wokwi and build the ASIC files.
+*(Optional)* Activate the repo-local environment directly in your shell:
+
+```sh
+source env.sh
+```
+
+### 2. Make Targets
+
+| Command | Description |
+| :--- | :--- |
+| `make help` | Show all available targets |
+| `make setup` | Install macOS toolchain, `./tt`, `./.venv`, and `./.pdk` |
+| `make lint` | Run Verilator lint and Tiny Tapeout port/configuration checks |
+| `make sim` | Run cocotb RTL verification (`test/test.py`) |
+| `make waves` | View simulation waveforms (`test/tb.fst`) in Surfer |
+| `make synth` | Run fast local Yosys synthesis and cell count check |
+| `make config` | Generate LibreLane configuration (`src/config_merged.json`) |
+| `make impl` | Run full LibreLane RTL-to-GDSII flow (`./tt/tt_tool.py --harden --gf`) |
+| `make sim-gl` | Run Gate-Level cocotb verification against the hardened netlist |
+| `make stats` | Print synthesis warnings, routing utilization, and cell summary |
+| `make openroad` | Open hardened design in OpenROAD GUI |
+| `make klayout` | Open hardened design in KLayout |
+| `make png` | Render GDSII layout to `gds_render.png` |
+| `make docs` | Validate `info.yaml` and `docs/info.md` |
+| `make clean` | Clean simulation and temporary build files |
 
 ## Enable GitHub actions to build the results page
 

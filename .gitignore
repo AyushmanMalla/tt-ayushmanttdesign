@@ -1,6 +1,11 @@
 .DS_Store
 .idea
+.kilo
 *.vcd
+*.fst
+.venv
+.pdk
+tt
 runs
 tt_submission
 src/user_config.json
@@ -9,3 +14,7 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+gds_render*.png
+gds_render*.svg
+docs/doc.typ
+docs/doc.pdf
