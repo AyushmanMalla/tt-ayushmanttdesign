@@ -32,17 +32,39 @@ module tt_um_ayushmanmalla_top (
   localparam [PHASE_BITS-1:0] HALF_CYCLE = 7'd64;
 
   // ---------------------------------------------------------------------------
-  // Input Pin Mapping
+  // Registered Input Pin Mapping (breaks external input delay from datapath)
   // ---------------------------------------------------------------------------
-  wire mode_sel  = ui_in[0]; // 0 = Standalone Art, 1 = SPI Host
-  wire hw_enable = ui_in[5]; // 1 = active, 0 = hardware safety mute
-  wire am_mod_in = ui_in[6]; // 1-bit parametric AM / pulse modulation
-  wire clk_div2  = ui_in[7]; // 0 = 50 MHz, 1 = 25 MHz
+  reg mode_sel_r;
+  reg ui4_r;
+  reg hw_enable_r;
+  reg am_mod_r;
+  reg clk_div2_r;
+
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      mode_sel_r  <= 1'b0;
+      ui4_r       <= 1'b0;
+      hw_enable_r <= 1'b0;
+      am_mod_r    <= 1'b0;
+      clk_div2_r  <= 1'b0;
+    end else begin
+      mode_sel_r  <= ui_in[0]; // 0 = Standalone Art, 1 = SPI Host
+      ui4_r       <= ui_in[4]; // PAT_1 (Mode 0) / SOFT_PWR (Mode 1)
+      hw_enable_r <= ui_in[5]; // 1 = active, 0 = hardware safety mute
+      am_mod_r    <= ui_in[6]; // 1-bit parametric AM / pulse modulation
+      clk_div2_r  <= ui_in[7]; // 0 = 50 MHz, 1 = 25 MHz
+    end
+  end
+
+  wire mode_sel  = mode_sel_r;
+  wire hw_enable = hw_enable_r;
+  wire am_mod_in = am_mod_r;
+  wire clk_div2  = clk_div2_r;
 
   wire spi_sck   = ui_in[1];
   wire spi_mosi  = ui_in[2];
   wire spi_cs_n  = ui_in[3];
-  wire soft_pwr  = mode_sel && ui_in[4];
+  wire soft_pwr  = mode_sel && ui4_r;
 
   // ---------------------------------------------------------------------------
   // SPI Mode 0 Slave (reuses 2-FF syncs for Mode 0 BTN_UP / BTN_DOWN)
@@ -82,7 +104,7 @@ module tt_um_ayushmanmalla_top (
   reg [PHASE_BITS-1:0]       z_offset;
   reg signed [GRAD_BITS-1:0] grad_x;
   reg signed [GRAD_BITS-1:0] grad_y;
-  reg [6:0]                  ctrl_reg;
+  reg [7:0]                  ctrl_reg;
   reg [1:0]                  pat_latched;
 
   wire spi_out_en     = ctrl_reg[0];
@@ -90,6 +112,7 @@ module tt_um_ayushmanmalla_top (
   wire [1:0] art_spd  = ctrl_reg[4:3];
   wire run_art_in_spi = ctrl_reg[5];
   wire top_invert     = ctrl_reg[6];
+  wire vortex_en      = ctrl_reg[7];
 
   wire soft_reset = spi_wr_en && (spi_wr_addr == 5'h17) && (spi_wr_data == 8'hA5);
   wire reg_rst    = (!rst_n) || soft_reset;
@@ -98,7 +121,7 @@ module tt_um_ayushmanmalla_top (
     if (!rst_n) begin
       pat_latched <= 2'b00;
     end else if (!mode_sel) begin
-      pat_latched <= ui_in[4:3];
+      pat_latched <= {ui4_r, ui_in[3]};
     end
   end
 
@@ -109,7 +132,7 @@ module tt_um_ayushmanmalla_top (
       z_offset   <= {PHASE_BITS{1'b0}};
       grad_x     <= {GRAD_BITS{1'b0}};
       grad_y     <= {GRAD_BITS{1'b0}};
-      ctrl_reg   <= 7'h05;
+      ctrl_reg   <= 8'h05;
     end else if (spi_wr_en && spi_wr_addr[4]) begin
       case (spi_wr_addr[3:0])
         4'h0: freq_word[7:0]  <= spi_wr_data;
@@ -118,7 +141,7 @@ module tt_um_ayushmanmalla_top (
         4'h3: z_offset        <= spi_wr_data[PHASE_BITS-1:0];
         4'h4: grad_x          <= spi_wr_data[GRAD_BITS-1:0];
         4'h5: grad_y          <= spi_wr_data[GRAD_BITS-1:0];
-        4'h6: ctrl_reg        <= spi_wr_data[6:0];
+        4'h6: ctrl_reg        <= spi_wr_data;
         default: begin
         end
       endcase
@@ -197,7 +220,7 @@ module tt_um_ayushmanmalla_top (
   // Standalone Kinetic Art Engine
   // ---------------------------------------------------------------------------
   wire                        use_art = (!mode_sel) || run_art_in_spi;
-  wire [1:0]                  eff_pat = mode_sel ? pat_latched : ui_in[4:3];
+  wire [1:0]                  eff_pat = pat_latched;
   wire [PHASE_BITS-1:0]       art_z;
   wire signed [GRAD_BITS-1:0] art_gx;
   wire signed [GRAD_BITS-1:0] art_gy;
@@ -244,27 +267,35 @@ module tt_um_ayushmanmalla_top (
   wire eval_en    = out_en && !ch_clr_act;
 
   // ---------------------------------------------------------------------------
-  // 2-Way Shadow-Buffered Symmetric 8-Ring Evaluator (1 Bot + 1 Top / cycle)
-  //   slot[2:0] = k (0..7):
+  // 2-Way Pipelined Shadow-Buffered Symmetric 8-Ring Evaluator (1 Bot + 1 Top / cycle)
+  //   Lookahead stage precomputes g_signed_r (including optional Hardware Acoustic
+  //   Vortex staircase k*16) for slot_next = slot + 1, and latches bot_snap,
+  //   top_snap, and eff_duty_r cleanly at slot == 7 (breaking the 4-adder path).
   //     k=0: +Gx      | k=1: +Gx+Gy | k=2: +Gy | k=3: -Gx+Gy
   //     k=4: -Gx      | k=5: -Gx-Gy | k=6: -Gy | k=7: +Gx-Gy
   // ---------------------------------------------------------------------------
-  reg [PHASE_BITS-1:0] phase_snap;
+  reg [PHASE_BITS-1:0] bot_snap;
+  reg [PHASE_BITS-1:0] top_snap;
+  reg [PHASE_BITS-1:0] eff_duty_r;
+  reg [PHASE_BITS-1:0] g_signed_r;
 
+  wire [2:0]                  slot_next = slot + 3'd1;
   wire [PHASE_BITS-1:0]       active_z  = use_art ? art_z  : z_offset;
   wire signed [GRAD_BITS-1:0] active_gx = use_art ? art_gx : grad_x;
   wire signed [GRAD_BITS-1:0] active_gy = use_art ? art_gy : grad_y;
 
-  wire [PHASE_BITS-1:0] gx7   = {active_gx[GRAD_BITS-1], active_gx};
-  wire [PHASE_BITS-1:0] gy7   = {active_gy[GRAD_BITS-1], active_gy};
-  wire [PHASE_BITS-1:0] ga_a  = (slot[1:0] == 2'd0) ? {PHASE_BITS{1'b0}} : gy7;
-  wire [PHASE_BITS-1:0] ga_b  = (slot[1:0] == 2'd2) ? {PHASE_BITS{1'b0}} : gx7;
-  wire [PHASE_BITS-1:0] g_mag = (slot[1:0] == 2'd3) ? (ga_a - ga_b) : (ga_a + ga_b);
+  wire [PHASE_BITS-1:0] gx7        = {active_gx[GRAD_BITS-1], active_gx};
+  wire [PHASE_BITS-1:0] gy7        = {active_gy[GRAD_BITS-1], active_gy};
+  wire [PHASE_BITS-1:0] ga_a       = (slot_next[1:0] == 2'd0) ? {PHASE_BITS{1'b0}} : gy7;
+  wire [PHASE_BITS-1:0] ga_b       = (slot_next[1:0] == 2'd2) ? {PHASE_BITS{1'b0}} : gx7;
+  wire [PHASE_BITS-1:0] g_mag_next = (slot_next[1:0] == 2'd3) ? (ga_a - ga_b) : (ga_a + ga_b);
+  wire [PHASE_BITS-1:0] g_dir_next = slot_next[2] ? -g_mag_next : g_mag_next;
+  wire [PHASE_BITS-1:0] vortex_add = vortex_en ? {slot_next, 4'b0000} : {PHASE_BITS{1'b0}};
+  wire [PHASE_BITS-1:0] g_tot_next = g_dir_next + vortex_add;
 
   wire [PHASE_BITS-1:0] top_z      = {active_z[PHASE_BITS-1] ^ top_invert, active_z[PHASE_BITS-2:0]};
-  wire [PHASE_BITS-1:0] eval_phase = (slot == 3'd0) ? master_phase : phase_snap;
-  wire [PHASE_BITS-1:0] p_bot      = slot[2] ? (eval_phase - g_mag) : (eval_phase + g_mag);
-  wire [PHASE_BITS-1:0] p_top      = p_bot + top_z;
+  wire [PHASE_BITS-1:0] p_bot      = bot_snap + g_signed_r;
+  wire [PHASE_BITS-1:0] p_top      = top_snap + g_signed_r;
 
   wire ch_bot_q;
   wire ch_top_q;
@@ -275,7 +306,7 @@ module tt_um_ayushmanmalla_top (
       .out_en       (eval_en),
       .master_phase (p_bot),
       .eff_phase    (bank_bot[0]),
-      .eff_duty     (eff_duty),
+      .eff_duty     (eff_duty_r),
       .ch_out       (ch_bot_q)
   );
 
@@ -285,7 +316,7 @@ module tt_um_ayushmanmalla_top (
       .out_en       (eval_en),
       .master_phase (p_top),
       .eff_phase    (bank_top[0]),
-      .eff_duty     (eff_duty),
+      .eff_duty     (eff_duty_r),
       .ch_out       (ch_top_q)
   );
 
@@ -296,10 +327,13 @@ module tt_um_ayushmanmalla_top (
   reg [7:0] uio_out_reg;
 
   always @(posedge clk) begin
-    sh_bot <= {ch_bot_q, sh_bot[6:1]};
-    sh_top <= {ch_top_q, sh_top[6:1]};
-    if (slot == 3'd0) begin
-      phase_snap <= master_phase;
+    sh_bot     <= {ch_bot_q, sh_bot[6:1]};
+    sh_top     <= {ch_top_q, sh_top[6:1]};
+    g_signed_r <= g_tot_next;
+    if (slot == 3'd7) begin
+      bot_snap   <= master_phase;
+      top_snap   <= master_phase + top_z;
+      eff_duty_r <= eff_duty;
     end
   end
 

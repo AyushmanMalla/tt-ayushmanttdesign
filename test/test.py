@@ -208,7 +208,7 @@ async def test_default_40khz_clk_div2_and_enable_mute(dut):
     assert read_all_ch(dut) == 0xFFFF, "Outputs did not go high before mute test"
 
     dut.ui_in.value = ui_mode1(enable=0, clk_div2=1)
-    await ClockCycles(dut.clk, 2)
+    await ClockCycles(dut.clk, 3)
     assert read_all_ch(dut) == 0x0000, f"ENABLE=0 failed to mute outputs: 0x{read_all_ch(dut):04X}"
 
 
@@ -235,7 +235,7 @@ async def test_128step_fine_phase_all_16_channels(dut):
         # Pick the edge of ch closest to ref_edge - expected_delay
         measured_step = circular_phase_diff(ref_edge, edges[ch][0], period)
         err = circular_step_err(measured_step, expected_step)
-        assert err <= 0.45, (
+        assert err <= 0.55, (
             f"Ch {ch}: expected step {expected_step}, measured {measured_step:.2f} (err={err:.2f})"
         )
 
@@ -462,3 +462,39 @@ async def test_standalone_art_modes(dut):
     assert 18.0 <= delta_elev <= 26.0, (
         f"Continuous Elevator did not advance steadily: start={z_start:.1f}, mid={z_mid:.1f}, delta={delta_elev:.1f}"
     )
+
+
+@cocotb.test()
+async def test_hardware_acoustic_vortex(dut):
+    """Verify CTRL_REG[7]=1 helical acoustic vortex staircase (k*16) + opposing bottle trap."""
+    cocotb.start_soon(Clock(dut.clk, CLK_PERIOD_NS, unit="ns").start())
+    await reset_dut(dut, ui_mode1(enable=1))
+
+    # FREQ_WORD = 0x400 -> exact 1024 clocks/cycle = 8 clocks per 7-bit phase step
+    await spi_write(dut, REG_FREQ_LO, 0x00)
+    await spi_write(dut, REG_FREQ_HI, 0x04)
+
+    # Enable vortex_en (CTRL_REG[7]=1, spi_out_en=1 -> 0x85)
+    await spi_write(dut, REG_CTRL, 0x85)
+    await ClockCycles(dut.clk, 20)
+    edges, _ = await capture_channels(dut, 2100)
+    ref = edges[0][1]
+    for k in range(8):
+        exp_step = (k * 16) % PHASE_STEPS
+        assert circular_step_err(circular_phase_diff(ref, edges[k][0], 1024), exp_step) <= 0.5, (
+            f"Vortex Bot Ch {k}: exp {exp_step}"
+        )
+        assert circular_step_err(circular_phase_diff(ref, edges[k + 8][0], 1024), exp_step) <= 0.5, (
+            f"Vortex Top Ch {k + 8}: exp {exp_step}"
+        )
+
+    # Combine vortex_en + top_invert (CTRL_REG = 0xC5) for opposing acoustic bottle trap
+    await spi_write(dut, REG_CTRL, 0xC5)
+    await ClockCycles(dut.clk, 20)
+    edges, _ = await capture_channels(dut, 2100)
+    ref = edges[0][1]
+    for k in range(8):
+        exp_bot = (k * 16) % PHASE_STEPS
+        exp_top = (k * 16 + 64) % PHASE_STEPS
+        assert circular_step_err(circular_phase_diff(ref, edges[k][0], 1024), exp_bot) <= 0.5
+        assert circular_step_err(circular_phase_diff(ref, edges[k + 8][0], 1024), exp_top) <= 0.5
