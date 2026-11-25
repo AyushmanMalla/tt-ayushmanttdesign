@@ -1,69 +1,33 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# AyushmanTTDesign — Tiny Tapeout Verilog Project (GF180MCU)
+# AETHER-16 — Pure-Silicon 16-Channel Acoustic Levitator ASIC (`gf180mcuD`, `1×1`)
 
-- [Read the documentation for project](docs/info.md)
+**AETHER-16** (`tt_um_ayushmanmalla_top`) is a `1×1` Tiny Tapeout custom ASIC (`gf180mcuD`, 180 nm, `50 MHz`) that drives **16 simultaneous, phase-locked, glitch-free 40 kHz ultrasonic channels** at **7-bit (128-step, `2.8125°` / `34 µm`) phase resolution** to suspend and smoothly animate real 1–3 mm objects in mid-air—completely microcontroller-free in Standalone Kinetic Art Mode, or fully programmable via SPI Mode 0.
+
+![AETHER-16 Concept Render](docs/images/aether16_concept.jpg)
+
+## Key Documentation
+- **[Tiny Tapeout Datasheet](docs/info.md)** — Pinout, operation, Day-1 Demo Board bring-up, and external hardware
+- **[Product Requirements Document (PRD)](docs/PRD.md)** — Complete architecture spec, 50 MHz justification, 8-ring geometry, and SPI register map
+- **[Engineering Results & Signoff Report](docs/RESULTS.md)** — Empirical comparison of parallel worktree experiments (`exp/phase6-base`, `exp/phase7-hires`, `exp/phase6-extra`), post-PnR metrics, Gor'kov acoustic field plots, and GDSII visuals
+- **[Guided Learning Branch (`learn/aether16-puzzles`)](../../tree/learn/aether16-puzzles)** — 7 progressive Verilog + ASIC verification puzzles to build AETHER-16 from scratch
+
+## Silicon Signoff Summary (`1×1` `gf180mcuD`, `50 MHz`)
+- **Resolution & Features:** 16 channels × 7-bit (`128` steps, `34 µm`), tunable 20-bit NCO (`40,006.6 Hz` @ `50 MHz` / `25 MHz`), atomic 3D ring steering (`Z_OFFSET`, `GRAD_X`, `GRAD_Y`, `top_invert`), Hardware Acoustic Vortex Mode (`CTRL_REG[7]`), duty/AM modulation, and 4 Standalone Kinetic Art modes.
+- **Physical Metrics:** `1,476` active std cells (`308` DFFs), `81.05%` routing utilization, `51,974 µm` wirelength, **`0` DRC / `0` LVS / `0` Antenna**, `0.00 ns` setup WNS (`nom_tt_025C_3v30`) & `0.00 ns` hold WNS (all 9 corners).
+- **Verification:** `0` Verilator lint warnings, `0` Yosys synth warnings, **6/6 RTL `cocotb` PASS**, **6/6 Gate-Level `cocotb` (`make sim-gl`) PASS**.
 
 ## Open-Source ASIC Workflow (macOS & Make)
 
-This project uses a full open-source RTL-to-GDSII flow targeting the GlobalFoundries 180nm (`gf180mcuD`) PDK:
-- **RTL Design**: Verilog-2005 (`src/project.v`, top module `tt_um_ayushmanmalla_top`)
-- **Verification**: [cocotb](https://www.cocotb.org/) + Icarus Verilog (`test/tb.v`, `test/test.py`) + [Surfer](https://surfer-project.org/)
-- **Lint & Synthesis**: Verilator & Yosys
-- **ASIC Implementation (RTL-to-GDSII)**: [LibreLane](https://librelane.readthedocs.io/) (OpenROAD, Yosys, Magic, Netgen, KLayout)
-
-### 1. Environment Setup (macOS)
-
-Run the centralized setup script via Make to install Homebrew dependencies, clone `tt-support-tools` into `./tt`, create the repo-local Python environment in `./.venv`, and enable the `gf180mcuD` PDK in `./.pdk`:
-
-```sh
-make setup
-```
-
-*(Optional)* Activate the repo-local environment directly in your shell:
-
-```sh
-source env.sh
-```
-
-### 2. Make Targets
-
 | Command | Description |
 | :--- | :--- |
-| `make help` | Show all available targets |
-| `make setup` | Install macOS toolchain, `./tt`, `./.venv`, and `./.pdk` |
-| `make lint` | Run Verilator lint and Tiny Tapeout port/configuration checks |
-| `make sim` | Run cocotb RTL verification (`test/test.py`) |
-| `make waves` | View simulation waveforms (`test/tb.fst`) in Surfer |
-| `make synth` | Run fast local Yosys synthesis and cell count check |
-| `make config` | Generate LibreLane configuration (`src/config_merged.json`) |
-| `make impl` | Run full LibreLane RTL-to-GDSII flow (`./tt/tt_tool.py --harden --gf`) |
-| `make sim-gl` | Run Gate-Level cocotb verification against the hardened netlist |
-| `make stats` | Print synthesis warnings, routing utilization, and cell summary |
-| `make openroad` | Open hardened design in OpenROAD GUI |
-| `make klayout` | Open hardened design in KLayout |
-| `make png` | Render GDSII layout to `gds_render.png` |
-| `make docs` | Validate `info.yaml` and `docs/info.md` |
-| `make clean` | Clean simulation and temporary build files |
-
-## Enable GitHub actions to build the results page
-
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
-
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+| `make setup` | Install macOS toolchain, `./tt`, `./.venv`, and `./.pdk` (`gf180mcuD`) |
+| `make lint` | Run Verilator `-Wall` lint and Tiny Tapeout YAML/port checks |
+| `make sim` | Run `cocotb` RTL verification (`test/test.py`) |
+| `make waves` | Open simulation waveforms (`test/tb.fst`) in Surfer |
+| `make synth` | Run local Yosys synthesis mapped to `gf180mcu_fd_sc_mcu7t5v0` |
+| `make impl` | Run full LibreLane RTL-to-GDSII flow (`tt_tool.py --harden --pdk gf180mcuD`) |
+| `make sim-gl` | Run `cocotb` Gate-Level verification against the hardened netlist |
+| `make png` | Render GDSII silicon layout to `gds_render.png` |
+| `make docs` | Validate `info.yaml` and `docs/info.md` datasheet |
+| `.venv/bin/python3 scripts/sim_acoustic_field.py --phase-bits 7` | Render 3D Gor'kov acoustic levitation potential heatmaps |

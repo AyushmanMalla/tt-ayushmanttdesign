@@ -10,11 +10,16 @@ PDK_ROOT      ?= $(ROOT_DIR)/.pdk
 PDK           ?= gf180mcuD
 TT_DIR        := $(ROOT_DIR)/tt
 TT_SCRIPT     := $(TT_DIR)/tt_tool.py
-# On macOS (Apple Silicon / Intel), Homebrew shared libraries (e.g. libcairo.2.dylib) live in /opt/homebrew/lib or /usr/local/lib.
-# Invoke python3 directly rather than via /usr/bin/env shebang so macOS SIP does not strip DYLD_FALLBACK_LIBRARY_PATH.
-TT_ENV        := DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:/usr/local/lib:$${DYLD_FALLBACK_LIBRARY_PATH:-}"
+# On macOS (Apple Silicon / Intel), Homebrew shared libraries (e.g. libcairo.2.dylib) live in /opt/homebrew/lib or /usr/local/lib,
+# and yowasp-yosys needs explicit YOWASP_MOUNT so wasmtime does not hang preopening /.
+ifeq ($(shell uname -s),Darwin)
+  TT_YOWASP_ENV := YOWASP_MOUNT="/=$(ROOT_DIR):/private=/private:/Users=/Users"
+else
+  TT_YOWASP_ENV :=
+endif
+TT_ENV        := $(TT_YOWASP_ENV) DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:/usr/local/lib:$${DYLD_FALLBACK_LIBRARY_PATH:-}"
 TT_TOOL       := $(TT_ENV) $(PYTHON) $(TT_SCRIPT)
-TT_ARGS       ?= --gf
+TT_ARGS       ?= --pdk $(PDK)
 
 TOP_MODULE    ?= tt_um_ayushmanmalla_top
 SRC_DIR       := $(ROOT_DIR)/src

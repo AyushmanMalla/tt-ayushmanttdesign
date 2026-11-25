@@ -160,8 +160,11 @@ module tt_um_ayushmanmalla_top (
   reg                  ch_clr_act;
   reg [2:0]            ch_clr_cnt;
 
-  reg [PHASE_BITS-1:0] bank_bot [0:7];
-  reg [PHASE_BITS-1:0] bank_top [0:7];
+  reg [8*PHASE_BITS-1:0] bank_bot;
+  reg [8*PHASE_BITS-1:0] bank_top;
+
+  wire [PHASE_BITS-1:0] bank_bot_head = bank_bot[PHASE_BITS-1:0];
+  wire [PHASE_BITS-1:0] bank_top_head = bank_top[PHASE_BITS-1:0];
 
   wire ch_wr_hit  = ch_wr_pend && (slot == lat_ch_addr[2:0]);
   wire ch_clr_now = reg_rst || ch_clr_act;
@@ -190,15 +193,13 @@ module tt_um_ayushmanmalla_top (
     end
   end
 
-  // Pure DFF-to-DFF rotation for [0..6]; tail [7] handles clear/write/recirculate
-  integer s;
+  // Pure packed DFF-to-DFF rotation (0 Yosys memory warnings); tail handles clear/write/recirculate
+  wire [PHASE_BITS-1:0] bank_bot_next = ch_clr_now ? {PHASE_BITS{1'b0}} : (wr_bot ? lat_ch_data : bank_bot_head);
+  wire [PHASE_BITS-1:0] bank_top_next = ch_clr_now ? {PHASE_BITS{1'b0}} : (wr_top ? lat_ch_data : bank_top_head);
+
   always @(posedge clk) begin
-    for (s = 0; s < 7; s = s + 1) begin
-      bank_bot[s] <= bank_bot[s + 1];
-      bank_top[s] <= bank_top[s + 1];
-    end
-    bank_bot[7] <= ch_clr_now ? {PHASE_BITS{1'b0}} : (wr_bot ? lat_ch_data : bank_bot[0]);
-    bank_top[7] <= ch_clr_now ? {PHASE_BITS{1'b0}} : (wr_top ? lat_ch_data : bank_top[0]);
+    bank_bot <= {bank_bot_next, bank_bot[8*PHASE_BITS-1:PHASE_BITS]};
+    bank_top <= {bank_top_next, bank_top[8*PHASE_BITS-1:PHASE_BITS]};
   end
 
   // ---------------------------------------------------------------------------
@@ -305,7 +306,7 @@ module tt_um_ayushmanmalla_top (
       .rst_n        (rst_n),
       .out_en       (eval_en),
       .master_phase (p_bot),
-      .eff_phase    (bank_bot[0]),
+      .eff_phase    (bank_bot_head),
       .eff_duty     (eff_duty_r),
       .ch_out       (ch_bot_q)
   );
@@ -315,7 +316,7 @@ module tt_um_ayushmanmalla_top (
       .rst_n        (rst_n),
       .out_en       (eval_en),
       .master_phase (p_top),
-      .eff_phase    (bank_top[0]),
+      .eff_phase    (bank_top_head),
       .eff_duty     (eff_duty_r),
       .ch_out       (ch_top_q)
   );
