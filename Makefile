@@ -41,12 +41,15 @@ export PDK
 STDCELL_LIB   := $(PDK_ROOT)/$(PDK)/libs.ref/gf180mcu_fd_sc_mcu7t5v0/lib/gf180mcu_fd_sc_mcu7t5v0__tt_025C_3v30.lib
 GL_NETLIST    := $(ROOT_DIR)/runs/wokwi/final/pnl/$(TOP_MODULE).pnl.v
 
-.PHONY: help setup pdk colima lint sim test sim-gl test-gl waves synth config impl harden gds stats submission png svg docs openroad klayout clean distclean
+.PHONY: help setup pdk colima lint sim test sim-gl test-gl waves synth config impl harden gds stats submission png svg docs openroad klayout test-puzzle clean distclean
 
 help:
 	@echo "================================================================================"
 	@echo "  Tiny Tapeout Open-Source ASIC Flow ($(TOP_MODULE) | PDK: $(PDK))"
 	@echo "================================================================================"
+	@echo "Guided Learning Puzzles (learn/aether16-puzzles):"
+	@echo "  make test-puzzle P=N  Run puzzle grader N (1..7); omit P for puzzle list"
+	@echo ""
 	@echo "Environment & Setup:"
 	@echo "  make setup        Install macOS tools, ./tt, ./.venv, and ./.pdk ($(PDK))"
 	@echo "  make pdk          Download/enable $(PDK) PDK in ./.pdk via ciel"
@@ -210,12 +213,60 @@ docs:
 	$(TT_TOOL) --check-docs $(TT_ARGS)
 
 # ------------------------------------------------------------------------------
+# Guided Learning Puzzles (puzzles/01_nco .. puzzles/07_physical_signoff)
+# ------------------------------------------------------------------------------
+
+test-puzzle:
+	@case "$(P)" in \
+		1) \
+			echo "[puzzle-1] Testing src/aether_nco.v (20-bit Tunable Carrier NCO)..."; \
+			$(MAKE) -C puzzles/01_nco clean && $(MAKE) -C puzzles/01_nco && \
+			$(PYTHON) -m cocotb_tools.check_results puzzles/01_nco/results.xml ;; \
+		2) \
+			echo "[puzzle-2] Testing src/aether_channel.v (Glitch-Free Ultrasonic PWM Channel)..."; \
+			$(MAKE) -C puzzles/02_channel clean && $(MAKE) -C puzzles/02_channel && \
+			$(PYTHON) -m cocotb_tools.check_results puzzles/02_channel/results.xml ;; \
+		3) \
+			echo "[puzzle-3] Testing src/aether_spi.v (2-FF Synchronized SPI Mode 0 Slave)..."; \
+			$(MAKE) -C puzzles/03_spi clean && $(MAKE) -C puzzles/03_spi && \
+			$(PYTHON) -m cocotb_tools.check_results puzzles/03_spi/results.xml ;; \
+		4) \
+			echo "[puzzle-4] Testing src/aether_art_fsm.v (Standalone Kinetic Art Engine)..."; \
+			$(MAKE) -C puzzles/04_art_fsm clean && $(MAKE) -C puzzles/04_art_fsm && \
+			$(PYTHON) -m cocotb_tools.check_results puzzles/04_art_fsm/results.xml ;; \
+		5) \
+			echo "[puzzle-5] Testing src/project.v Part A (2x8 Shift-Bank TDM, 3D Pipeline & Vortex)..."; \
+			$(MAKE) -C puzzles/05_shift_bank_and_3d clean && $(MAKE) -C puzzles/05_shift_bank_and_3d && \
+			$(PYTHON) -m cocotb_tools.check_results puzzles/05_shift_bank_and_3d/results.xml ;; \
+		6) \
+			echo "[puzzle-6] Testing src/project.v Part B (Full SoC Integration + Official Suite + Gor'kov Physics)..."; \
+			$(MAKE) -C puzzles/06_full_soc_integration clean && $(MAKE) -C puzzles/06_full_soc_integration && \
+			$(PYTHON) -m cocotb_tools.check_results puzzles/06_full_soc_integration/results.xml && \
+			$(MAKE) sim && \
+			$(PYTHON) scripts/sim_acoustic_field.py --phase-bits 7 --out puzzles/06_full_soc_integration/acoustic_trap_xz.png ;; \
+		7) \
+			echo "[puzzle-7] Running Physical ASIC Signoff Audit (Lint + Yosys Synth + RTL + LibreLane)..."; \
+			$(PYTHON) puzzles/07_physical_signoff/check_signoff.py ;; \
+		*) \
+			echo "Usage: make test-puzzle P=<1..7>"; \
+			echo "  P=1  puzzles/01_nco                  -> src/aether_nco.v"; \
+			echo "  P=2  puzzles/02_channel              -> src/aether_channel.v"; \
+			echo "  P=3  puzzles/03_spi                  -> src/aether_spi.v"; \
+			echo "  P=4  puzzles/04_art_fsm              -> src/aether_art_fsm.v"; \
+			echo "  P=5  puzzles/05_shift_bank_and_3d    -> src/project.v (Part A)"; \
+			echo "  P=6  puzzles/06_full_soc_integration -> src/project.v (Part B + make sim + Gor'kov)"; \
+			echo "  P=7  puzzles/07_physical_signoff     -> Full ASIC Physical Signoff Lab"; \
+			exit 1 ;; \
+	esac
+
+# ------------------------------------------------------------------------------
 # Cleanup
 # ------------------------------------------------------------------------------
 
 clean:
 	$(MAKE) -C $(TEST_DIR) clean
 	rm -rf $(TEST_DIR)/sim_build $(TEST_DIR)/results.xml $(TEST_DIR)/tb.fst $(TEST_DIR)/gate_level_netlist.v $(TEST_DIR)/__pycache__
+	rm -rf puzzles/*/sim_build puzzles/*/results.xml puzzles/*/__pycache__ puzzles/06_full_soc_integration/acoustic_trap_xz.png
 	rm -f $(SRC_DIR)/user_config.json $(SRC_DIR)/config_merged.json ports.json
 
 distclean: clean

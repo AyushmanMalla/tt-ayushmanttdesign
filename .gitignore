@@ -14,6 +14,10 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+puzzles/*/sim_build
+puzzles/*/__pycache__/
+puzzles/*/results.xml
+puzzles/06_full_soc_integration/acoustic_trap_xz.png
 gds_render*.png
 gds_render*.svg
 docs/doc.typ

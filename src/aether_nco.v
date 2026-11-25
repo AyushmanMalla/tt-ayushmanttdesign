@@ -2,8 +2,10 @@
  * Copyright (c) 2026 Ayushman Malla
  * SPDX-License-Identifier: Apache-2.0
  *
- * AETHER-16: 20-bit Numerically Controlled Oscillator (NCO)
- * Default freq_word = 12'h347 (839) -> 40,006.6 Hz @ 50 MHz (and @ 25 MHz with clk_div2=1)
+ * AETHER-16 — Puzzle 01 Starter Skeleton: 20-bit Numerically Controlled Oscillator (NCO)
+ * Brief:  puzzles/01_nco/README.md
+ * Verify: make test-puzzle P=1
+ * Diff:   git diff main -- src/aether_nco.v
  */
 
 `default_nettype none
@@ -18,18 +20,17 @@ module aether_nco #(
     output wire [PHASE_BITS-1:0] master_phase
 );
 
-  reg [19:0] phase_acc;
+  // TODO(puzzle-1): Implement the 20-bit tunable NCO phase accumulator:
+  //   1. Declare `reg [19:0] phase_acc;`
+  //   2. Compute 20-bit `phase_inc`:
+  //        - clk_div2 == 0 -> {8'd0, freq_word}
+  //        - clk_div2 == 1 -> {7'd0, freq_word, 1'b0} (2x increment for 25 MHz clock)
+  //   3. On posedge clk: synchronous active-low reset (`!rst_n`) clears `phase_acc <= 20'd0`,
+  //      otherwise accumulate `phase_acc <= phase_acc + phase_inc;`
+  //   4. Drive `master_phase = phase_acc[19 -: PHASE_BITS];`
 
-  wire [19:0] phase_inc = clk_div2 ? {7'd0, freq_word, 1'b0} : {8'd0, freq_word};
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      phase_acc <= 20'd0;
-    end else begin
-      phase_acc <= phase_acc + phase_inc;
-    end
-  end
-
-  assign master_phase = phase_acc[19 -: PHASE_BITS];
+  // Starter stub (replace when implementing Puzzle 01):
+  assign master_phase = {PHASE_BITS{1'b0}};
+  wire _unused = &{clk, rst_n, clk_div2, freq_word, 1'b0};
 
 endmodule

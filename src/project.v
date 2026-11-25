@@ -2,16 +2,11 @@
  * Copyright (c) 2026 Ayushman Malla
  * SPDX-License-Identifier: Apache-2.0
  *
- * AETHER-16: Pure-Silicon 16-Channel Ultrasonic Phased-Array Acoustic Levitator
- * Variant B (exp/phase7-hires): PHASE_BITS = 7 (128 steps = 2.8125 deg = 34 um)
- *
- * Area-optimized 2-way rotating shift-bank phase/PWM engine with atomic
- * shadow-buffered 16-channel output commit:
- *   - 2 circular 8x7-bit shift banks (Bottom Ch 0..7, Top Ch 8..15) eliminate all
- *     16-ch read muxes, 87.5% of write muxes, and 98 interior reset gates
- *   - 0.00 ns inter-channel skew (atomic 16-pin commit every 8 cycles = 160 ns @ 50 MHz,
- *     finer than 195.3 ns 7-bit phase step for full 128-step resolution)
- *   - 1-cycle hardware safety mute (ENABLE=0)
+ * AETHER-16 — Puzzles 05 & 06 Starter Skeleton: Top-Level 16-Channel Acoustic Levitator SoC
+ *   Part A (Puzzle 05): puzzles/05_shift_bank_and_3d/README.md    -> make test-puzzle P=5
+ *   Part B (Puzzle 06): puzzles/06_full_soc_integration/README.md -> make test-puzzle P=6
+ *   Signoff (Puzzle 07): puzzles/07_physical_signoff/README.md    -> make test-puzzle P=7
+ *   Diff vs tapeout:    git diff main -- src/project.v
  */
 
 `default_nettype none
@@ -31,337 +26,58 @@ module tt_um_ayushmanmalla_top (
   localparam GRAD_BITS  = 6;
   localparam [PHASE_BITS-1:0] HALF_CYCLE = 7'd64;
 
-  // ---------------------------------------------------------------------------
-  // Registered Input Pin Mapping (breaks external input delay from datapath)
-  // ---------------------------------------------------------------------------
-  reg mode_sel_r;
-  reg ui4_r;
-  reg hw_enable_r;
-  reg am_mod_r;
-  reg clk_div2_r;
+  // ===========================================================================
+  // TODO(puzzle-6): Registered Input Pin Mapping (breaks 4 ns external delay)
+  //   Register ui_in[0] (mode_sel_r), ui_in[4] (ui4_r), ui_in[5] (hw_enable_r),
+  //   ui_in[6] (am_mod_r), ui_in[7] (clk_div2_r). Derive `soft_pwr = mode_sel && ui4_r`.
+  //   Route ui_in[1..3] (spi_sck, spi_mosi, spi_cs_n) straight to u_spi.
+  // ===========================================================================
 
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      mode_sel_r  <= 1'b0;
-      ui4_r       <= 1'b0;
-      hw_enable_r <= 1'b0;
-      am_mod_r    <= 1'b0;
-      clk_div2_r  <= 1'b0;
-    end else begin
-      mode_sel_r  <= ui_in[0]; // 0 = Standalone Art, 1 = SPI Host
-      ui4_r       <= ui_in[4]; // PAT_1 (Mode 0) / SOFT_PWR (Mode 1)
-      hw_enable_r <= ui_in[5]; // 1 = active, 0 = hardware safety mute
-      am_mod_r    <= ui_in[6]; // 1-bit parametric AM / pulse modulation
-      clk_div2_r  <= ui_in[7]; // 0 = 50 MHz, 1 = 25 MHz
-    end
-  end
+  // ===========================================================================
+  // TODO(puzzle-5): Instantiate `aether_spi` (u_spi) and SPI Global Registers
+  //   Registers 0x10..0x16: freq_word (default 12'h347), duty_cycle (HALF_CYCLE),
+  //   z_offset (0), grad_x (0), grad_y (0), ctrl_reg (8'h05).
+  //   TODO(puzzle-6): Add `soft_reset` (addr 5'h17, data 8'hA5), `reg_rst`,
+  //   and `pat_latched` (latches `{ui4_r, ui_in[3]}` while `!mode_sel`).
+  // ===========================================================================
 
-  wire mode_sel  = mode_sel_r;
-  wire hw_enable = hw_enable_r;
-  wire am_mod_in = am_mod_r;
-  wire clk_div2  = clk_div2_r;
+  // ===========================================================================
+  // TODO(puzzle-5): Packed 2x8 Rotating Shift Banks (`bank_bot`, `bank_top`)
+  //   - `reg [8*PHASE_BITS-1:0] bank_bot, bank_top;` (pure resetless DFF-to-DFF shift!)
+  //   - `slot[2:0]` counter (0..7), `ch_wr_pend` write-on-slot-match using `lat_ch_addr/data`
+  //   - 8-cycle X-free reset scrubber (`ch_clr_act`, `ch_clr_cnt = 3'd7..0`) on `reg_rst`
+  // ===========================================================================
 
-  wire spi_sck   = ui_in[1];
-  wire spi_mosi  = ui_in[2];
-  wire spi_cs_n  = ui_in[3];
-  wire soft_pwr  = mode_sel && ui4_r;
+  // ===========================================================================
+  // TODO(puzzle-5): Instantiate `aether_nco` (u_nco)
+  // TODO(puzzle-6): Instantiate `aether_art_fsm` (u_art_fsm) & `use_art` mux
+  // ===========================================================================
 
-  // ---------------------------------------------------------------------------
-  // SPI Mode 0 Slave (reuses 2-FF syncs for Mode 0 BTN_UP / BTN_DOWN)
-  // ---------------------------------------------------------------------------
-  wire       sck_synced;
-  wire       mosi_synced;
-  wire       spi_wr_en;
-  wire [4:0] spi_wr_addr;
-  wire [7:0] spi_wr_data;
-  wire [3:0] lat_ch_addr;
-  wire [6:0] lat_ch_data;
+  // ===========================================================================
+  // TODO(puzzle-6): Duty-Cycle Clamping (<= 64), SOFT_PWR (>> 1),
+  //   4-Level Parametric AM (`am_depth` = ctrl_reg[2:1]), and `out_en` / `eval_en`
+  // ===========================================================================
 
-  aether_spi u_spi (
-      .clk         (clk),
-      .rst_n       (rst_n),
-      .mode_sel    (mode_sel),
-      .spi_sck     (spi_sck),
-      .spi_mosi    (spi_mosi),
-      .spi_cs_n    (spi_cs_n),
-      .sck_sync_o  (sck_synced),
-      .mosi_sync_o (mosi_synced),
-      .wr_en       (spi_wr_en),
-      .wr_addr     (spi_wr_addr),
-      .wr_data     (spi_wr_data),
-      .lat_ch_addr (lat_ch_addr),
-      .lat_ch_data (lat_ch_data)
-  );
+  // ===========================================================================
+  // TODO(puzzle-5): 2-Way Pipelined Lookahead 8-Ring Evaluator & Atomic Commit
+  //   - Precompute 45-deg ring gradient + Hardware Acoustic Vortex (`k*16` when `ctrl_reg[7]`)
+  //     for `slot_next = slot + 3'd1` and register into `g_signed_r` every cycle.
+  //   - At `slot == 3'd7`, snapshot `bot_snap <= master_phase`,
+  //     `top_snap <= master_phase + top_z` (applying `top_invert = ctrl_reg[6]`),
+  //     and `eff_duty_r <= eff_duty`.
+  //   - Instantiate `u_ch_bot` & `u_ch_top` (`aether_channel`).
+  //   - Shift `ch_bot_q` / `ch_top_q` into `sh_bot[6:0]` / `sh_top[6:0]`, and commit all
+  //     16 channels atomically (`uo_out_reg`, `uio_out_reg`) when `slot == 3'd0`
+  //     (or clear to 8'h00 immediately whenever `!eval_en`).
+  // ===========================================================================
 
-  wire art_btn_up = !mode_sel && sck_synced;
-  wire art_btn_dn = !mode_sel && mosi_synced;
-
-  // ---------------------------------------------------------------------------
-  // Control / Global SPI Registers (0x10..0x17) with Unified Hard/Soft Reset
-  // ---------------------------------------------------------------------------
-  reg [11:0]                 freq_word;
-  reg [PHASE_BITS-1:0]       duty_cycle;
-  reg [PHASE_BITS-1:0]       z_offset;
-  reg signed [GRAD_BITS-1:0] grad_x;
-  reg signed [GRAD_BITS-1:0] grad_y;
-  reg [7:0]                  ctrl_reg;
-  reg [1:0]                  pat_latched;
-
-  wire spi_out_en     = ctrl_reg[0];
-  wire [1:0] am_depth = ctrl_reg[2:1];
-  wire [1:0] art_spd  = ctrl_reg[4:3];
-  wire run_art_in_spi = ctrl_reg[5];
-  wire top_invert     = ctrl_reg[6];
-  wire vortex_en      = ctrl_reg[7];
-
-  wire soft_reset = spi_wr_en && (spi_wr_addr == 5'h17) && (spi_wr_data == 8'hA5);
-  wire reg_rst    = (!rst_n) || soft_reset;
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      pat_latched <= 2'b00;
-    end else if (!mode_sel) begin
-      pat_latched <= {ui4_r, ui_in[3]};
-    end
-  end
-
-  always @(posedge clk) begin
-    if (reg_rst) begin
-      freq_word  <= 12'h347;
-      duty_cycle <= HALF_CYCLE;
-      z_offset   <= {PHASE_BITS{1'b0}};
-      grad_x     <= {GRAD_BITS{1'b0}};
-      grad_y     <= {GRAD_BITS{1'b0}};
-      ctrl_reg   <= 8'h05;
-    end else if (spi_wr_en && spi_wr_addr[4]) begin
-      case (spi_wr_addr[3:0])
-        4'h0: freq_word[7:0]  <= spi_wr_data;
-        4'h1: freq_word[11:8] <= spi_wr_data[3:0];
-        4'h2: duty_cycle      <= spi_wr_data[PHASE_BITS-1:0];
-        4'h3: z_offset        <= spi_wr_data[PHASE_BITS-1:0];
-        4'h4: grad_x          <= spi_wr_data[GRAD_BITS-1:0];
-        4'h5: grad_y          <= spi_wr_data[GRAD_BITS-1:0];
-        4'h6: ctrl_reg        <= spi_wr_data;
-        default: begin
-        end
-      endcase
-    end
-  end
-
-  // ---------------------------------------------------------------------------
-  // 2x8 Rotating Shift-Bank Channel Phase Storage (CH_BASE_PHASE[0..15])
-  //   bank_bot[0..7]: Ch 0..7   | bank_top[0..7]: Ch 8..15
-  //   Interior stages [0..6] are pure resetless DFF-to-DFF shift registers!
-  //   Hard reset / SOFT_RESET sweeps zeros through all 8 slots while muting
-  //   channel outputs so GL simulation is 100% X-free even on a 1-cycle reset.
-  // ---------------------------------------------------------------------------
-  reg [2:0]            slot;
-  reg                  ch_wr_pend;
-  reg                  ch_clr_act;
-  reg [2:0]            ch_clr_cnt;
-
-  reg [8*PHASE_BITS-1:0] bank_bot;
-  reg [8*PHASE_BITS-1:0] bank_top;
-
-  wire [PHASE_BITS-1:0] bank_bot_head = bank_bot[PHASE_BITS-1:0];
-  wire [PHASE_BITS-1:0] bank_top_head = bank_top[PHASE_BITS-1:0];
-
-  wire ch_wr_hit  = ch_wr_pend && (slot == lat_ch_addr[2:0]);
-  wire ch_clr_now = reg_rst || ch_clr_act;
-  wire wr_bot     = ch_wr_hit && !lat_ch_addr[3];
-  wire wr_top     = ch_wr_hit &&  lat_ch_addr[3];
-
-  always @(posedge clk) begin
-    if (reg_rst) begin
-      ch_wr_pend <= 1'b0;
-      ch_clr_act <= 1'b1;
-      ch_clr_cnt <= 3'd7;
-    end else begin
-      if (spi_wr_en && !spi_wr_addr[4]) begin
-        ch_wr_pend <= 1'b1;
-      end else if (ch_wr_hit) begin
-        ch_wr_pend <= 1'b0;
-      end
-
-      if (ch_clr_act) begin
-        if (ch_clr_cnt == 3'd0) begin
-          ch_clr_act <= 1'b0;
-        end else begin
-          ch_clr_cnt <= ch_clr_cnt - 3'd1;
-        end
-      end
-    end
-  end
-
-  // Pure packed DFF-to-DFF rotation (0 Yosys memory warnings); tail handles clear/write/recirculate
-  wire [PHASE_BITS-1:0] bank_bot_next = ch_clr_now ? {PHASE_BITS{1'b0}} : (wr_bot ? lat_ch_data : bank_bot_head);
-  wire [PHASE_BITS-1:0] bank_top_next = ch_clr_now ? {PHASE_BITS{1'b0}} : (wr_top ? lat_ch_data : bank_top_head);
-
-  always @(posedge clk) begin
-    bank_bot <= {bank_bot_next, bank_bot[8*PHASE_BITS-1:PHASE_BITS]};
-    bank_top <= {bank_top_next, bank_top[8*PHASE_BITS-1:PHASE_BITS]};
-  end
-
-  // ---------------------------------------------------------------------------
-  // 20-Bit Carrier NCO
-  // ---------------------------------------------------------------------------
-  wire [PHASE_BITS-1:0] master_phase;
-
-  aether_nco #(
-      .PHASE_BITS(PHASE_BITS)
-  ) u_nco (
-      .clk          (clk),
-      .rst_n        (rst_n),
-      .clk_div2     (clk_div2),
-      .freq_word    (freq_word),
-      .master_phase (master_phase)
-  );
-
-  // ---------------------------------------------------------------------------
-  // Standalone Kinetic Art Engine
-  // ---------------------------------------------------------------------------
-  wire                        use_art = (!mode_sel) || run_art_in_spi;
-  wire [1:0]                  eff_pat = pat_latched;
-  wire [PHASE_BITS-1:0]       art_z;
-  wire signed [GRAD_BITS-1:0] art_gx;
-  wire signed [GRAD_BITS-1:0] art_gy;
-
-  aether_art_fsm #(
-      .PHASE_BITS(PHASE_BITS),
-      .GRAD_BITS (GRAD_BITS)
-  ) u_art_fsm (
-      .clk       (clk),
-      .rst_n     (rst_n),
-      .art_en    (use_art),
-      .pat_sel   (eff_pat),
-      .art_speed (art_spd),
-      .btn_up    (art_btn_up),
-      .btn_down  (art_btn_dn),
-      .art_z     (art_z),
-      .art_gx    (art_gx),
-      .art_gy    (art_gy)
-  );
-
-  // ---------------------------------------------------------------------------
-  // Global Duty-Cycle Clamping, SOFT_PWR Reduction & Parametric AM
-  // ---------------------------------------------------------------------------
-  wire [PHASE_BITS-1:0] duty_clamped = (duty_cycle[PHASE_BITS-1] && (|duty_cycle[PHASE_BITS-2:0]))
-                                       ? HALF_CYCLE : duty_cycle;
-  wire [PHASE_BITS-1:0] duty_soft    = soft_pwr ? {1'b0, duty_clamped[PHASE_BITS-1:1]} : duty_clamped;
-
-  reg [PHASE_BITS-1:0] eff_duty;
-  always @(*) begin
-    if (!am_mod_in) begin
-      eff_duty = duty_soft;
-    end else begin
-      case (am_depth)
-        2'b00:   eff_duty = duty_soft;                                      // 0% AM (off)
-        2'b01:   eff_duty = duty_soft - {2'b00, duty_soft[PHASE_BITS-1:2]}; // 25% AM
-        2'b10:   eff_duty = {1'b0, duty_soft[PHASE_BITS-1:1]};              // 50% AM
-        2'b11:   eff_duty = {2'b00, duty_soft[PHASE_BITS-1:2]};             // 75% AM
-        default: eff_duty = duty_soft;
-      endcase
-    end
-  end
-
-  wire out_en     = hw_enable && (mode_sel ? spi_out_en : 1'b1);
-  wire eval_en    = out_en && !ch_clr_act;
-
-  // ---------------------------------------------------------------------------
-  // 2-Way Pipelined Shadow-Buffered Symmetric 8-Ring Evaluator (1 Bot + 1 Top / cycle)
-  //   Lookahead stage precomputes g_signed_r (including optional Hardware Acoustic
-  //   Vortex staircase k*16) for slot_next = slot + 1, and latches bot_snap,
-  //   top_snap, and eff_duty_r cleanly at slot == 7 (breaking the 4-adder path).
-  //     k=0: +Gx      | k=1: +Gx+Gy | k=2: +Gy | k=3: -Gx+Gy
-  //     k=4: -Gx      | k=5: -Gx-Gy | k=6: -Gy | k=7: +Gx-Gy
-  // ---------------------------------------------------------------------------
-  reg [PHASE_BITS-1:0] bot_snap;
-  reg [PHASE_BITS-1:0] top_snap;
-  reg [PHASE_BITS-1:0] eff_duty_r;
-  reg [PHASE_BITS-1:0] g_signed_r;
-
-  wire [2:0]                  slot_next = slot + 3'd1;
-  wire [PHASE_BITS-1:0]       active_z  = use_art ? art_z  : z_offset;
-  wire signed [GRAD_BITS-1:0] active_gx = use_art ? art_gx : grad_x;
-  wire signed [GRAD_BITS-1:0] active_gy = use_art ? art_gy : grad_y;
-
-  wire [PHASE_BITS-1:0] gx7        = {active_gx[GRAD_BITS-1], active_gx};
-  wire [PHASE_BITS-1:0] gy7        = {active_gy[GRAD_BITS-1], active_gy};
-  wire [PHASE_BITS-1:0] ga_a       = (slot_next[1:0] == 2'd0) ? {PHASE_BITS{1'b0}} : gy7;
-  wire [PHASE_BITS-1:0] ga_b       = (slot_next[1:0] == 2'd2) ? {PHASE_BITS{1'b0}} : gx7;
-  wire [PHASE_BITS-1:0] g_mag_next = (slot_next[1:0] == 2'd3) ? (ga_a - ga_b) : (ga_a + ga_b);
-  wire [PHASE_BITS-1:0] g_dir_next = slot_next[2] ? -g_mag_next : g_mag_next;
-  wire [PHASE_BITS-1:0] vortex_add = vortex_en ? {slot_next, 4'b0000} : {PHASE_BITS{1'b0}};
-  wire [PHASE_BITS-1:0] g_tot_next = g_dir_next + vortex_add;
-
-  wire [PHASE_BITS-1:0] top_z      = {active_z[PHASE_BITS-1] ^ top_invert, active_z[PHASE_BITS-2:0]};
-  wire [PHASE_BITS-1:0] p_bot      = bot_snap + g_signed_r;
-  wire [PHASE_BITS-1:0] p_top      = top_snap + g_signed_r;
-
-  wire ch_bot_q;
-  wire ch_top_q;
-
-  aether_channel #(.PHASE_BITS(PHASE_BITS)) u_ch_bot (
-      .clk          (clk),
-      .rst_n        (rst_n),
-      .out_en       (eval_en),
-      .master_phase (p_bot),
-      .eff_phase    (bank_bot_head),
-      .eff_duty     (eff_duty_r),
-      .ch_out       (ch_bot_q)
-  );
-
-  aether_channel #(.PHASE_BITS(PHASE_BITS)) u_ch_top (
-      .clk          (clk),
-      .rst_n        (rst_n),
-      .out_en       (eval_en),
-      .master_phase (p_top),
-      .eff_phase    (bank_top_head),
-      .eff_duty     (eff_duty_r),
-      .ch_out       (ch_top_q)
-  );
-
-  // Pure shift shadow registers (no reset needed; flushed with 0s during ch_clr_act)
-  reg [6:0] sh_bot; // Ch 0..6
-  reg [6:0] sh_top; // Ch 8..14
-  reg [7:0] uo_out_reg;
-  reg [7:0] uio_out_reg;
-
-  always @(posedge clk) begin
-    sh_bot     <= {ch_bot_q, sh_bot[6:1]};
-    sh_top     <= {ch_top_q, sh_top[6:1]};
-    g_signed_r <= g_tot_next;
-    if (slot == 3'd7) begin
-      bot_snap   <= master_phase;
-      top_snap   <= master_phase + top_z;
-      eff_duty_r <= eff_duty;
-    end
-  end
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      slot        <= 3'd0;
-      uo_out_reg  <= 8'h00;
-      uio_out_reg <= 8'h00;
-    end else begin
-      slot <= slot + 3'd1;
-
-      if (!eval_en) begin
-        uo_out_reg  <= 8'h00;
-        uio_out_reg <= 8'h00;
-      end else if (slot == 3'd0) begin
-        // slot == 0: ch_*_q holds k=7 (Ch 7, 15); sh_* holds k=6..0 -> atomic 16-ch commit
-        uo_out_reg  <= {ch_bot_q, sh_bot};
-        uio_out_reg <= {ch_top_q, sh_top};
-      end
-    end
-  end
-
-  assign uo_out  = uo_out_reg;
-  assign uio_out = uio_out_reg;
+  // Starter stub (replace when implementing Puzzles 05 & 06):
+  assign uo_out  = 8'h00;
+  assign uio_out = 8'h00;
   assign uio_oe  = 8'hFF;
 
-  // Tie off unused inputs to prevent lint warnings
-  wire _unused = &{ena, uio_in, 1'b0};
+  // Tie off unused inputs/params to prevent lint warnings in starter skeleton
+  wire [GRAD_BITS-1:0] _unused_grad = {GRAD_BITS{1'b0}};
+  wire _unused = &{ena, clk, rst_n, ui_in, uio_in, HALF_CYCLE, _unused_grad, 1'b0};
 
 endmodule
