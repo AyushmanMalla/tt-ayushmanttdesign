@@ -1,11 +1,11 @@
 # Tiny Tapeout project information
 project:
-  title: "AyushmanTTDesign" # Project title
+  title: "AETHER-16" # Project title
   author: "Ayushman Malla" # Your name
   discord: "" # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description: "3-bit synchronous counter with 7-segment display decoder" # One line description of what your project does
+  description: "Pure-silicon 16-channel 40 kHz ultrasonic phased-array acoustic levitator (7-bit / 128-step phase)" # One line description of what your project does
   language: "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz: 1000 # Clock frequency in Hz (or 0 if not applicable)
+  clock_hz: 50000000 # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 340x160 uM.
   tiles: "1x1" # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 3x4 or 4x4
@@ -18,39 +18,43 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
+    - "aether_nco.v"
+    - "aether_spi.v"
+    - "aether_art_fsm.v"
+    - "aether_channel.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  ui[0]: "MODE_SEL (0=Art, 1=SPI)"
+  ui[1]: "BTN_UP / SPI_SCK"
+  ui[2]: "BTN_DOWN / SPI_MOSI"
+  ui[3]: "PAT_0 / SPI_CS_N"
+  ui[4]: "PAT_1 / SOFT_PWR"
+  ui[5]: "ENABLE"
+  ui[6]: "AM_MOD_IN"
+  ui[7]: "CLK_DIV2"
 
   # Outputs
-  uo[0]: "SEG_A"
-  uo[1]: "SEG_B"
-  uo[2]: "SEG_C"
-  uo[3]: "SEG_D"
-  uo[4]: "SEG_E"
-  uo[5]: "SEG_F"
-  uo[6]: "SEG_G"
-  uo[7]: "DP"
+  uo[0]: "CH0_BOT"
+  uo[1]: "CH1_BOT"
+  uo[2]: "CH2_BOT"
+  uo[3]: "CH3_BOT"
+  uo[4]: "CH4_BOT"
+  uo[5]: "CH5_BOT"
+  uo[6]: "CH6_BOT"
+  uo[7]: "CH7_BOT"
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "CH8_TOP"
+  uio[1]: "CH9_TOP"
+  uio[2]: "CH10_TOP"
+  uio[3]: "CH11_TOP"
+  uio[4]: "CH12_TOP"
+  uio[5]: "CH13_TOP"
+  uio[6]: "CH14_TOP"
+  uio[7]: "CH15_TOP"
 
 # Do not change!
 yaml_version: 6
