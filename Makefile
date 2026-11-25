@@ -19,7 +19,11 @@ TT_ARGS       ?= --gf
 TOP_MODULE    ?= tt_um_ayushmanmalla_top
 SRC_DIR       := $(ROOT_DIR)/src
 TEST_DIR      := $(ROOT_DIR)/test
-VERILOG_SRCS  := $(SRC_DIR)/project.v
+VERILOG_SRCS  := $(SRC_DIR)/project.v \
+                 $(SRC_DIR)/aether_nco.v \
+                 $(SRC_DIR)/aether_spi.v \
+                 $(SRC_DIR)/aether_art_fsm.v \
+                 $(SRC_DIR)/aether_channel.v
 
 # Automatically prepend .venv/bin to PATH when present
 ifneq ($(wildcard $(VENV_DIR)/bin),)
